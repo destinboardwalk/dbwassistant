@@ -3,30 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boardwalk Assist | Your Destin Concierge</title>
+    <title>Boardwalk Assist | Official AI Concierge</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,900;1,400&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        /**
+         * ROBUST PROCESS POLYFILL
+         * This ensures that any reference to process.env.API_KEY does not throw a ReferenceError
+         * while allowing the environment to inject the key as intended.
+         */
+        window.process = window.process || { env: { API_KEY: "" } };
+        if (!window.process.env) window.process.env = { API_KEY: "" };
+    </script>
     <style>
-        :root {
-            --boardwalk-navy: #002147;
-            --boardwalk-gold: #c5a059;
-        }
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #fdfdfd;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            color: #1e293b;
         }
-        .serif { font-family: 'Bodoni Moda', serif; }
-        .luxury-shadow { box-shadow: 0 20px 50px -12px rgba(0, 33, 71, 0.15); }
-        .glass {
-            background: rgba(255, 255, 255, 0.9);
+        .bg-boardwalk-gradient {
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #172554 100%);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        .bg-gradient-coastal {
-            background: linear-gradient(135deg, #002147 0%, #004a80 100%);
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
         }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
     <script type="importmap">
 {
@@ -42,9 +60,273 @@
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="antialiased text-slate-900">
-    <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
+<body>
+    <div id="root">
+        <div class="min-h-screen flex items-center justify-center">
+            <div class="text-center">
+                <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Boardwalk Assist Launching...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import { GoogleGenAI } from "@google/genai";
+
+        // UI Component: Preference Button Group
+        const PreferenceGroup = ({ label, options, selected, onChange, multiple = false }) => {
+            const isSelected = (opt) => multiple ? selected.includes(opt) : selected === opt;
+            const handleClick = (opt) => {
+                if (multiple) {
+                    onChange(isSelected(opt) ? selected.filter(i => i !== opt) : [...selected, opt]);
+                } else {
+                    onChange(opt);
+                }
+            };
+
+            return (
+                <div className="mb-8">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">{label}</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {options.map((opt) => (
+                            <button
+                                key={opt}
+                                onClick={() => handleClick(opt)}
+                                className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all duration-300 ${
+                                    isSelected(opt) 
+                                    ? 'bg-blue-700 border-blue-700 text-white shadow-lg shadow-blue-200 scale-[1.02]' 
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-700 shadow-sm'
+                                }`}
+                            >
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [prefs, setPrefs] = useState({ 
+                tripType: 'Adventure', 
+                groupType: 'Friends', 
+                days: 3, 
+                interests: [] 
+            });
+            const [loading, setLoading] = useState(false);
+            const [result, setResult] = useState(null);
+            const [error, setError] = useState(null);
+
+            const handleSearch = async () => {
+                if (prefs.interests.length === 0) {
+                    setError("Please select at least one activity to get started.");
+                    return;
+                }
+                setLoading(true);
+                setError(null);
+                
+                try {
+                    // Initialize Gemini with the system-provided key
+                    const apiKey = process.env.API_KEY || (window.process && window.process.env.API_KEY);
+                    if (!apiKey) throw new Error("API Key is missing from the environment.");
+
+                    const ai = new GoogleGenAI({ apiKey });
+                    
+                    const prompt = `
+                        You are "Boardwalk Assist", the official high-end AI concierge for destinboardwalk.com.
+                        
+                        USER PROFILE:
+                        - Group Type: ${prefs.groupType}
+                        - Trip Duration: ${prefs.days} days
+                        - Desired Vibe: ${prefs.tripType}
+                        - Selected Interests: ${prefs.interests.join(', ')}
+
+                        STRICT CONTENT RULES:
+                        1. TERMINOLOGY: Never use the word "Harbor". Always use "Destin Boardwalk" or "The Boardwalk".
+                        2. LINKS: You MUST use these exact URLs for corresponding activities. If a category is selected, include its link.
+                           - Crab Island: https://destinboardwalk.com/crab-island-destin-florida-things-to-do-destin-boardwalk/
+                           - Boat Rentals: https://destinboardwalk.com/destin-florida-boat-rentals-destin-boardwalk/
+                           - Charter Fishing: https://destinboardwalk.com/charter-fishing-in-destin-florida/
+                           - Parasailing: https://destinboardwalk.com/parasailing-adventures-in-destin-destin-boardwalk/
+                           - Jet Ski Rentals: https://destinboardwalk.com/jet-ski-and-waverunners-rental-destin-boardwalk/
+                           - Dolphin Tours: https://destinboardwalk.com/sailing-charters/
+                           - Paddleboards/Kayaks: https://destinboardwalk.com/paddleboards-and-kayaks-rentals-destin-boardwalk/
+                           - Snorkeling: https://destinboardwalk.com/snorkeling-in-destin/
+                           - Dinner Cruises: https://destinboardwalk.com/destin-sunset-and-dinner-cruises/
+
+                        3. PERSONALIZATION: Tailor every suggestion to a ${prefs.groupType} trip. Mention safety if "Family" is chosen, or excitement/socializing if "Friends" or "Group" is chosen.
+
+                        OUTPUT FORMAT (Markdown):
+                        ### [Activity/Category Name]
+                        _Recommended for your ${prefs.tripType} ${prefs.groupType} trip_
+                        [A professional, enthusiastic description of why this is perfect for them.]
+                        - [Key highlight/Unique selling point]
+                        - [A local's tip for visiting the Boardwalk]
+                        [Check Availability](EXACT_URL_FROM_LIST)
+                    `;
+
+                    const response = await ai.models.generateContent({
+                        model: "gemini-3-flash-preview",
+                        contents: prompt,
+                        config: { temperature: 0.2 }
+                    });
+
+                    if (!response || !response.text) {
+                        throw new Error("No response from the concierge. Please try again.");
+                    }
+
+                    setResult(response.text);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch (e) {
+                    console.error("Boardwalk Assist Error:", e);
+                    setError(e.message || "A technical issue occurred. Please check your connection and try again.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const renderMarkdown = (text) => {
+                return text.split('\n').map((line, i) => {
+                    const t = line.trim();
+                    if (!t) return null;
+                    if (t.startsWith('###')) return <h3 key={i} className="text-2xl font-black text-blue-900 mt-12 mb-4 italic uppercase tracking-tighter leading-none">{t.replace('###', '')}</h3>;
+                    if (t.startsWith('_')) return <p key={i} className="text-blue-600/70 text-[10px] font-bold uppercase italic mb-6 tracking-widest leading-none">{t.replace(/_/g, '')}</p>;
+                    if (t.startsWith('- ')) return (
+                        <div key={i} className="flex gap-3 text-slate-600 font-medium mb-3 text-base">
+                            <span className="text-blue-500 font-bold shrink-0">✓</span>
+                            <span>{t.replace('- ', '')}</span>
+                        </div>
+                    );
+                    
+                    const linkMatch = t.match(/\[(.*?)\]\((.*?)\)/);
+                    if (linkMatch) return (
+                        <div key={i} className="mt-8 mb-16 border-b border-slate-100 pb-12">
+                            <a href={linkMatch[2]} target="_blank" className="inline-block px-12 py-5 bg-blue-700 text-white font-black rounded-2xl text-xs uppercase tracking-[0.2em] hover:bg-blue-800 transition-all shadow-xl shadow-blue-100 active:scale-95">Check Availability</a>
+                            <div className="mt-4 flex flex-wrap gap-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Instant Confirmation</span>
+                                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span> Best Price Guaranteed</span>
+                            </div>
+                        </div>
+                    );
+                    return <p key={i} className="text-slate-700 mb-6 text-lg leading-relaxed font-medium">{t}</p>;
+                });
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {/* HERO HEADER */}
+                    <div className="w-full bg-boardwalk-gradient px-6 py-20 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] -mr-40 -mt-40 animate-float"></div>
+                        <div className="max-w-2xl mx-auto flex items-center justify-between relative z-10">
+                            <div className="flex items-center gap-6">
+                                <div className="w-16 h-16 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl flex items-center justify-center shadow-2xl">
+                                    <svg className="w-9 h-9 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Boardwalk Assist</h1>
+                                    <p className="text-blue-300 text-[11px] font-bold uppercase tracking-[0.4em] mt-3 opacity-80">Official Destin Concierge</p>
+                                </div>
+                            </div>
+                            {result && (
+                                <button 
+                                    onClick={() => setResult(null)} 
+                                    className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                >
+                                    New Trip
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* MAIN CONTENT AREA */}
+                    <div className="max-w-2xl mx-auto -mt-12 px-4 pb-24 relative z-20">
+                        <div className="glass-card rounded-[3rem] shadow-2xl p-10 md:p-14 min-h-[600px]">
+                            {!result ? (
+                                <div className="space-y-12 transition-all duration-500 opacity-100">
+                                    <PreferenceGroup 
+                                        label="What interests you?" 
+                                        multiple 
+                                        options={['Parasailing', 'Charter Fishing', 'Boat Rentals', 'Dolphin Tours', 'Jet Ski Rentals', 'Dinner Cruises', 'Snorkeling', 'Crab Island', 'Paddleboards/Kayaks']} 
+                                        selected={prefs.interests} 
+                                        onChange={(v) => setPrefs({...prefs, interests: v})} 
+                                    />
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <PreferenceGroup label="The Vibe" options={['Adventure', 'Relaxing', 'Family', 'Romantic']} selected={prefs.tripType} onChange={(v) => setPrefs({...prefs, tripType: v})} />
+                                        <PreferenceGroup label="The Crew" options={['Family', 'Couples', 'Group', 'Friends']} selected={prefs.groupType} onChange={(v) => setPrefs({...prefs, groupType: v})} />
+                                    </div>
+
+                                    <div className="bg-slate-50/80 p-8 rounded-3xl flex items-center justify-between border border-slate-100 shadow-inner">
+                                        <div>
+                                            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Trip Duration</h3>
+                                            <p className="text-xs text-slate-500 font-medium italic">Days in Destin</p>
+                                        </div>
+                                        <div className="flex items-center gap-8">
+                                            <button onClick={() => setPrefs({...prefs, days: Math.max(1, prefs.days-1)})} className="w-12 h-12 bg-white border border-slate-200 rounded-2xl font-black text-xl text-slate-400 hover:border-blue-400 hover:text-blue-700 transition-all shadow-sm">-</button>
+                                            <div className="font-black text-4xl text-blue-900 italic min-w-[3rem] text-center">{prefs.days}</div>
+                                            <button onClick={() => setPrefs({...prefs, days: prefs.days+1})} className="w-12 h-12 bg-white border border-slate-200 rounded-2xl font-black text-xl text-slate-400 hover:border-blue-400 hover:text-blue-700 transition-all shadow-sm">+</button>
+                                        </div>
+                                    </div>
+
+                                    {error && (
+                                        <div className="p-5 bg-red-50 border border-red-100 text-red-600 rounded-2xl flex items-start gap-3">
+                                            <span className="text-lg font-bold">!</span>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase mb-1 tracking-widest leading-none">System Notification:</p>
+                                                <p className="text-xs font-bold">{error}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <button 
+                                        onClick={handleSearch} 
+                                        disabled={loading} 
+                                        className="w-full py-8 bg-blue-700 hover:bg-blue-800 text-white rounded-[2rem] font-black text-xl uppercase tracking-[0.2em] shadow-2xl shadow-blue-100 transition-all active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none relative overflow-hidden group"
+                                    >
+                                        <span className={`relative z-10 transition-all ${loading ? 'opacity-0' : 'opacity-100'}`}>Build My Destin Plan</span>
+                                        {loading && (
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                <span className="ml-3 text-sm font-bold tracking-widest">Consulting Concierge...</span>
+                                            </div>
+                                        )}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="transition-all duration-700 opacity-100">
+                                    <div className="bg-blue-50/50 p-8 rounded-[2.5rem] mb-12 flex items-center gap-8 border border-blue-100/50">
+                                        <div className="w-16 h-16 bg-blue-700 text-white rounded-2xl flex items-center justify-center font-bold text-3xl italic shadow-lg shadow-blue-200 leading-none">✓</div>
+                                        <div>
+                                            <p className="font-black text-blue-950 uppercase tracking-tighter italic text-2xl leading-none">Plan Ready</p>
+                                            <p className="text-[11px] text-blue-600 font-bold uppercase tracking-widest mt-2">Custom Itinerary for the Boardwalk</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {renderMarkdown(result)}
+                                    </div>
+                                    
+                                    <div className="mt-16 pt-10 border-t border-slate-100 text-center">
+                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">Destin Boardwalk Official Assistant</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <footer className="py-12 text-center opacity-20">
+                        <p className="text-[9px] font-black uppercase tracking-[0.8em] text-slate-500">Boardwalk Assist v2.1.0 • Powered by Gemini AI</p>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
